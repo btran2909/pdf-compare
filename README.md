@@ -1,6 +1,6 @@
 # PDF Comparison Tool
 
-A Node.js application that compares PDF files and generates detailed reports.
+A Node.js + React application that compares PDF files and generates detailed reports.
 
 ## Features
 
@@ -8,6 +8,14 @@ A Node.js application that compares PDF files and generates detailed reports.
 - Download and compare PDF files
 - Generate detailed comparison reports
 - Modern React UI with real-time status updates
+
+## Project Structure
+```
+pdf-compare/
+  client/   # React frontend
+  server/   # Node.js backend
+  README.md
+```
 
 ## Prerequisites
 
@@ -24,12 +32,13 @@ cd pdf-compare
 
 2. Install backend dependencies:
 ```bash
+cd server
 npm install
 ```
 
 3. Install frontend dependencies:
 ```bash
-cd client
+cd ../client
 npm install
 ```
 
@@ -45,6 +54,7 @@ API_BASE_URL=https://your-api-endpoint.com
 
 1. Start the backend server:
 ```bash
+cd server
 npm run dev
 ```
 
@@ -68,7 +78,7 @@ The application will be available at `http://localhost:3000`
 
 4. Click "View" to see detailed comparison for each pair
 
-## API Endpoints
+## API Endpoints (Backend)
 
 - `POST /api/process`: Process Excel file and compare PDFs
 - `POST /api/compare`: Compare two PDF files directly
@@ -85,5 +95,4 @@ The application will be available at `http://localhost:3000`
 - Frontend:
   - React
   - TypeScript
-  - Tailwind CSS
   - Axios 
