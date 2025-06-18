@@ -3,7 +3,7 @@ const cors = require('cors');
 const path = require('path');
 const multer = require('multer');
 const { processExcelFile } = require('./services/excelService');
-const { comparePDFs } = require('./services/pdfService');
+const { comparePDFs, getComparisonResult } = require('./services/pdfService');
 
 const app = express();
 const PORT = process.env.PORT || 5050;
@@ -32,7 +32,6 @@ if (!fs.existsSync(tempDir)) {
 
 // API Routes
 app.post('/api/process', upload.single('file'), async (req, res) => {
-  console.log(JSON.stringify(req.body));
   try {
     if (!req.file) {
       return res.status(400).json({ error: 'No file uploaded' });
@@ -57,6 +56,15 @@ app.post('/api/compare', async (req, res) => {
     res.json(result);
   } catch (error) {
     res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/comparison/:id', async (req, res) => {
+  try {
+    const result = await getComparisonResult(req.params.id);
+    res.json(result);
+  } catch (error) {
+    res.status(404).json({ error: error.message });
   }
 });
 

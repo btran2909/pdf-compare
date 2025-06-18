@@ -2,7 +2,7 @@ const ExcelJS = require('exceljs');
 const { comparePDFs } = require('./pdfService');
 
 const processExcelFile = async (filePath) => {
-  const API_BASE_URL = process.env.API_BASE_URL || '/core/api/Invoice/get-pdf-file';
+  const API_BASE_URL = process.env.API_BASE_URL || 'https://api.kikker.nl/core/api/Invoice/get-pdf-file';
   const workbook = new ExcelJS.Workbook();
   await workbook.xlsx.readFile(filePath);
   
