@@ -21,6 +21,12 @@ const fieldsThatShouldDiffers = [
 ];
 
 const downloadPDF = async (url, filename) => {
+  // If url is a local path, just return it
+  if (url.includes('server/src/temp/')) {
+    return url;
+  }
+  
+  // Otherwise download from URL
   const response = await axios.get(url, { responseType: 'arraybuffer' });
   const tempDir = path.join(__dirname, '../../temp');
   await fs.ensureDir(tempDir);
@@ -211,13 +217,11 @@ const getComparisonResult = async (resultId) => {
 
 const comparePDFs = async (oldPdfUrl, newPdfUrl) => {
   const startTime = Date.now();
-  let oldPdfPath = null;
-  let newPdfPath = null;
-
+  const tempDir = path.join(__dirname, '../../temp');
+  const oldPdfPath = path.join(tempDir, 'old_bill.pdf');
+  const newPdfPath = path.join(tempDir, 'new_bill.pdf');
+  
   try {
-    oldPdfPath = await downloadPDF(oldPdfUrl, 'old.pdf');
-    newPdfPath = await downloadPDF(newPdfUrl, 'new.pdf');
-
     const oldContent = await extractPDFContent(oldPdfPath);
     const newContent = await extractPDFContent(newPdfPath);
     
@@ -227,8 +231,8 @@ const comparePDFs = async (oldPdfUrl, newPdfUrl) => {
     const result = {
       ...comparison,
       executionTime,
-      oldFileName: path.basename(oldPdfUrl),
-      newFileName: path.basename(newPdfUrl)
+      oldFileName: path.basename(oldPdfPath),
+      newFileName: path.basename(newPdfPath)
     };
 
     // Save full result and get ID
@@ -247,12 +251,12 @@ const comparePDFs = async (oldPdfUrl, newPdfUrl) => {
     throw new Error(`PDF comparison failed: ${error.message}`);
   } finally {
     // Clean up temp files
-    if (oldPdfPath && fs.existsSync(oldPdfPath)) {
-      await fs.remove(oldPdfPath);
-    }
-    if (newPdfPath && fs.existsSync(newPdfPath)) {
-      await fs.remove(newPdfPath);
-    }
+    // if (oldPdfPath && fs.existsSync(oldPdfPath)) {
+    //   await fs.remove(oldPdfPath);
+    // }
+    // if (newPdfPath && fs.existsSync(newPdfPath)) {
+    //   await fs.remove(newPdfPath);
+    // }
   }
 };
 
