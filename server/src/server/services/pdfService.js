@@ -220,7 +220,8 @@ const comparePDFs = async (oldPdfUrl, newPdfUrl) => {
 
     const oldContent = await extractPDFContent(oldPdfPath);
     const newContent = await extractPDFContent(newPdfPath);
-    
+    console.log('Old PDF Content:', oldContent);
+    console.log('New PDF Content:', newContent);
     const comparison = compareFields(oldContent, newContent);
     const executionTime = Date.now() - startTime;
 
