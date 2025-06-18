@@ -10,8 +10,9 @@ const fieldsThatShouldDiffer = ['Different amount'];
 
 const downloadPDF = async (url, filename) => {
   const response = await axios.get(url, { responseType: 'arraybuffer' });
-  const filePath = path.join(__dirname, '../../temp', filename);
-  await fs.ensureDir(path.dirname(filePath));
+  const tempDir = path.join(__dirname, '../../temp');
+  await fs.ensureDir(tempDir);
+  const filePath = path.join(tempDir, filename);
   await fs.writeFile(filePath, response.data);
   return filePath;
 };
@@ -60,20 +61,18 @@ const extractFieldValue = (content, field) => {
 
 const comparePDFs = async (oldPdfUrl, newPdfUrl) => {
   const startTime = Date.now();
+  let oldPdfPath = null;
+  let newPdfPath = null;
   
   try {
-    const oldPdfPath = await downloadPDF(oldPdfUrl, 'old.pdf');
-    const newPdfPath = await downloadPDF(newPdfUrl, 'new.pdf');
+    oldPdfPath = await downloadPDF(oldPdfUrl, 'old.pdf');
+    newPdfPath = await downloadPDF(newPdfUrl, 'new.pdf');
 
     const oldContent = await extractPDFContent(oldPdfPath);
     const newContent = await extractPDFContent(newPdfPath);
 
     const comparison = compareFields(oldContent, newContent);
     const executionTime = Date.now() - startTime;
-
-    // Cleanup
-    await fs.remove(oldPdfPath);
-    await fs.remove(newPdfPath);
 
     return {
       ...comparison,
@@ -83,6 +82,14 @@ const comparePDFs = async (oldPdfUrl, newPdfUrl) => {
     };
   } catch (error) {
     throw new Error(`PDF comparison failed: ${error.message}`);
+  } finally {
+    // Clean up temp files
+    if (oldPdfPath && fs.existsSync(oldPdfPath)) {
+      await fs.remove(oldPdfPath);
+    }
+    if (newPdfPath && fs.existsSync(newPdfPath)) {
+      await fs.remove(newPdfPath);
+    }
   }
 };
 

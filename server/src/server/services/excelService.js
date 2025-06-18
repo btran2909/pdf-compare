@@ -2,36 +2,40 @@ const ExcelJS = require('exceljs');
 const { comparePDFs } = require('./pdfService');
 
 const processExcelFile = async (filePath) => {
+  console.log('filePath:', filePath);
   const workbook = new ExcelJS.Workbook();
   await workbook.xlsx.readFile(filePath);
   
   const worksheet = workbook.getWorksheet(1);
   const results = [];
+  let rowNumber = 2; // Skip header row
 
-  for (const row of worksheet.getRows(2)) { // Skip header row
+  while (worksheet.getRow(rowNumber).getCell(1).value || worksheet.getRow(rowNumber).getCell(2).value) {
+    const row = worksheet.getRow(rowNumber);
     const rsUuid = row.getCell(1).value;
     const invoiceUuid = row.getCell(2).value;
 
-    if (!rsUuid || !invoiceUuid) continue;
+    if (rsUuid && invoiceUuid) {
+      try {
+        const oldPdfUrl = `https://api.example.com/pdfs/${rsUuid}`; // Replace with actual API endpoint
+        const newPdfUrl = `https://api.example.com/pdfs/${invoiceUuid}`;
 
-    try {
-      const oldPdfUrl = `https://api.example.com/pdfs/${rsUuid}`; // Replace with actual API endpoint
-      const newPdfUrl = `https://api.example.com/pdfs/${invoiceUuid}`;
-
-      const comparisonResult = await comparePDFs(oldPdfUrl, newPdfUrl);
-      results.push({
-        rsUuid,
-        invoiceUuid,
-        ...comparisonResult
-      });
-    } catch (error) {
-      results.push({
-        rsUuid,
-        invoiceUuid,
-        error: error.message,
-        overallResult: 'Error'
-      });
+        const comparisonResult = await comparePDFs(oldPdfUrl, newPdfUrl);
+        results.push({
+          rsUuid,
+          invoiceUuid,
+          ...comparisonResult
+        });
+      } catch (error) {
+        results.push({
+          rsUuid,
+          invoiceUuid,
+          error: error.message,
+          overallResult: 'Error'
+        });
+      }
     }
+    rowNumber++;
   }
 
   return results;
