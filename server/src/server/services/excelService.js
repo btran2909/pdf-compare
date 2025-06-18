@@ -2,7 +2,7 @@ const ExcelJS = require('exceljs');
 const { comparePDFs } = require('./pdfService');
 
 const processExcelFile = async (filePath) => {
-  console.log('filePath:', filePath);
+  const API_BASE_URL = process.env.API_BASE_URL || '/core/api/Invoice/get-pdf-file';
   const workbook = new ExcelJS.Workbook();
   await workbook.xlsx.readFile(filePath);
   
@@ -12,24 +12,23 @@ const processExcelFile = async (filePath) => {
 
   while (worksheet.getRow(rowNumber).getCell(1).value || worksheet.getRow(rowNumber).getCell(2).value) {
     const row = worksheet.getRow(rowNumber);
-    const rsUuid = row.getCell(1).value;
-    const invoiceUuid = row.getCell(2).value;
-
-    if (rsUuid && invoiceUuid) {
+    const oldPdfUrlExcel = row.getCell(1).value;
+    const newPdfUrlExcel = row.getCell(2).value;
+    if (oldPdfUrlExcel && newPdfUrlExcel) {
       try {
-        const oldPdfUrl = `https://api.example.com/pdfs/${rsUuid}`; // Replace with actual API endpoint
-        const newPdfUrl = `https://api.example.com/pdfs/${invoiceUuid}`;
+        const oldPdfUrl = `${API_BASE_URL}/${oldPdfUrlExcel}`; // Replace with actual API endpoint
+        const newPdfUrl = `${API_BASE_URL}/${newPdfUrlExcel}`;
 
         const comparisonResult = await comparePDFs(oldPdfUrl, newPdfUrl);
         results.push({
-          rsUuid,
-          invoiceUuid,
+          oldPdfUrl,
+          newPdfUrl,
           ...comparisonResult
         });
       } catch (error) {
         results.push({
-          rsUuid,
-          invoiceUuid,
+          oldPdfUrlExcel,
+          newPdfUrlExcel,
           error: error.message,
           overallResult: 'Error'
         });
