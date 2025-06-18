@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import axios from 'axios';
 import { ComparisonResult } from '../types';
 import ComparisonModal from './ComparisonModal';
+import { ColumnFilterPopover } from './ColumnFilterPopover';
 
 interface ComparisonTableProps {
   results: ComparisonResult[];
@@ -13,7 +14,7 @@ interface SortConfig {
 }
 
 interface FilterConfig {
-  [key: string]: string;
+  [key: string]: Set<string>;
 }
 
 const ComparisonTable: React.FC<ComparisonTableProps> = ({ results }) => {
@@ -43,10 +44,10 @@ const ComparisonTable: React.FC<ComparisonTableProps> = ({ results }) => {
     }));
   };
 
-  const handleFilter = (key: string, value: string) => {
+  const handleFilter = (key: string, values: Set<string>) => {
     setFilterConfig(prev => ({
       ...prev,
-      [key]: value
+      [key]: values
     }));
   };
 
@@ -67,22 +68,27 @@ const ComparisonTable: React.FC<ComparisonTableProps> = ({ results }) => {
     let filtered = [...results];
 
     // Apply filters
-    Object.entries(filterConfig).forEach(([key, value]) => {
-      if (value && value.trim() !== '') {
-        const lowerValue = value.toLowerCase().trim();
+    Object.entries(filterConfig).forEach(([key, values]) => {
+      if (values.size > 0) {
         filtered = filtered.filter(item => {
+          let itemValue = '';
           switch (key) {
             case 'oldFile':
-              return item.oldFileName.toLowerCase().includes(lowerValue);
+              itemValue = item.oldFileName;
+              break;
             case 'newFile':
-              return item.newFileName.toLowerCase().includes(lowerValue);
+              itemValue = item.newFileName;
+              break;
             case 'status':
-              return item.overallResult.toLowerCase().includes(lowerValue);
+              itemValue = item.overallResult;
+              break;
             case 'time':
-              return item.executionTime.toString().includes(lowerValue);
+              itemValue = item.executionTime.toString();
+              break;
             default:
               return true;
           }
+          return values.has(itemValue);
         });
       }
     });
@@ -137,16 +143,20 @@ const ComparisonTable: React.FC<ComparisonTableProps> = ({ results }) => {
           <thead>
             <tr>
               <th style={{ 
-                width: '25%',
+                width: '22%',
                 padding: '12px 16px',
                 borderBottom: '2px solid #e5e7eb',
                 borderRight: '1px solid #e5e7eb'
               }}>
-                <div style={{ marginBottom: '8px' }}>
+                <div style={{ 
+                  display: 'flex', 
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: '8px'
+                }}>
                   <button 
                     onClick={() => handleSort('oldFile')}
                     style={{ 
-                      width: '100%',
                       background: 'none',
                       border: 'none',
                       cursor: 'pointer',
@@ -154,7 +164,6 @@ const ComparisonTable: React.FC<ComparisonTableProps> = ({ results }) => {
                       borderRadius: '4px',
                       display: 'flex',
                       alignItems: 'center',
-                      justifyContent: 'center',
                       gap: '4px',
                       fontSize: '0.875rem',
                       transition: 'all 0.2s',
@@ -166,33 +175,30 @@ const ComparisonTable: React.FC<ComparisonTableProps> = ({ results }) => {
                   >
                     Old PDF {renderSortIcon('oldFile')}
                   </button>
+                  <ColumnFilterPopover
+                    columnKey="oldFile"
+                    data={results}
+                    valueAccessor={(item) => item.oldFileName}
+                    selectedValues={filterConfig.oldFile || new Set()}
+                    onFilterChange={(values) => handleFilter('oldFile', values)}
+                  />
                 </div>
-                <input
-                  type="text"
-                  placeholder="Filter..."
-                  value={filterConfig.oldFile || ''}
-                  onChange={(e) => handleFilter('oldFile', e.target.value)}
-                  style={{ 
-                    width: '100%',
-                    padding: '6px 8px',
-                    borderRadius: '4px',
-                    border: '1px solid #e5e7eb',
-                    fontSize: '0.875rem',
-                    boxSizing: 'border-box'
-                  }}
-                />
               </th>
               <th style={{ 
-                width: '25%',
+                width: '22%',
                 padding: '12px 16px',
                 borderBottom: '2px solid #e5e7eb',
                 borderRight: '1px solid #e5e7eb'
               }}>
-                <div style={{ marginBottom: '8px' }}>
+                <div style={{ 
+                  display: 'flex', 
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: '8px'
+                }}>
                   <button 
                     onClick={() => handleSort('newFile')}
                     style={{ 
-                      width: '100%',
                       background: 'none',
                       border: 'none',
                       cursor: 'pointer',
@@ -200,7 +206,6 @@ const ComparisonTable: React.FC<ComparisonTableProps> = ({ results }) => {
                       borderRadius: '4px',
                       display: 'flex',
                       alignItems: 'center',
-                      justifyContent: 'center',
                       gap: '4px',
                       fontSize: '0.875rem',
                       transition: 'all 0.2s',
@@ -212,33 +217,30 @@ const ComparisonTable: React.FC<ComparisonTableProps> = ({ results }) => {
                   >
                     New PDF {renderSortIcon('newFile')}
                   </button>
+                  <ColumnFilterPopover
+                    columnKey="newFile"
+                    data={results}
+                    valueAccessor={(item) => item.newFileName}
+                    selectedValues={filterConfig.newFile || new Set()}
+                    onFilterChange={(values) => handleFilter('newFile', values)}
+                  />
                 </div>
-                <input
-                  type="text"
-                  placeholder="Filter..."
-                  value={filterConfig.newFile || ''}
-                  onChange={(e) => handleFilter('newFile', e.target.value)}
-                  style={{ 
-                    width: '100%',
-                    padding: '6px 8px',
-                    borderRadius: '4px',
-                    border: '1px solid #e5e7eb',
-                    fontSize: '0.875rem',
-                    boxSizing: 'border-box'
-                  }}
-                />
               </th>
               <th style={{ 
-                width: '20%',
+                width: '18%',
                 padding: '12px 16px',
                 borderBottom: '2px solid #e5e7eb',
                 borderRight: '1px solid #e5e7eb'
               }}>
-                <div style={{ marginBottom: '8px' }}>
+                <div style={{ 
+                  display: 'flex', 
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: '8px'
+                }}>
                   <button 
                     onClick={() => handleSort('status')}
                     style={{ 
-                      width: '100%',
                       background: 'none',
                       border: 'none',
                       cursor: 'pointer',
@@ -246,7 +248,6 @@ const ComparisonTable: React.FC<ComparisonTableProps> = ({ results }) => {
                       borderRadius: '4px',
                       display: 'flex',
                       alignItems: 'center',
-                      justifyContent: 'center',
                       gap: '4px',
                       fontSize: '0.875rem',
                       transition: 'all 0.2s',
@@ -258,33 +259,30 @@ const ComparisonTable: React.FC<ComparisonTableProps> = ({ results }) => {
                   >
                     Status {renderSortIcon('status')}
                   </button>
+                  <ColumnFilterPopover
+                    columnKey="status"
+                    data={results}
+                    valueAccessor={(item) => item.overallResult}
+                    selectedValues={filterConfig.status || new Set()}
+                    onFilterChange={(values) => handleFilter('status', values)}
+                  />
                 </div>
-                <input
-                  type="text"
-                  placeholder="Filter..."
-                  value={filterConfig.status || ''}
-                  onChange={(e) => handleFilter('status', e.target.value)}
-                  style={{ 
-                    width: '100%',
-                    padding: '6px 8px',
-                    borderRadius: '4px',
-                    border: '1px solid #e5e7eb',
-                    fontSize: '0.875rem',
-                    boxSizing: 'border-box'
-                  }}
-                />
               </th>
               <th style={{ 
-                width: '15%',
+                width: '14%',
                 padding: '12px 16px',
                 borderBottom: '2px solid #e5e7eb',
                 borderRight: '1px solid #e5e7eb'
               }}>
-                <div style={{ marginBottom: '8px' }}>
+                <div style={{ 
+                  display: 'flex', 
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: '8px'
+                }}>
                   <button 
                     onClick={() => handleSort('time')}
                     style={{ 
-                      width: '100%',
                       background: 'none',
                       border: 'none',
                       cursor: 'pointer',
@@ -292,7 +290,6 @@ const ComparisonTable: React.FC<ComparisonTableProps> = ({ results }) => {
                       borderRadius: '4px',
                       display: 'flex',
                       alignItems: 'center',
-                      justifyContent: 'center',
                       gap: '4px',
                       fontSize: '0.875rem',
                       transition: 'all 0.2s',
@@ -302,65 +299,72 @@ const ComparisonTable: React.FC<ComparisonTableProps> = ({ results }) => {
                     onMouseEnter={e => e.currentTarget.style.background = '#f3f4f6'}
                     onMouseLeave={e => e.currentTarget.style.background = 'none'}
                   >
-                    Time (ms) {renderSortIcon('time')}
+                    Time {renderSortIcon('time')}
                   </button>
+                  <ColumnFilterPopover
+                    columnKey="time"
+                    data={results}
+                    valueAccessor={(item) => item.executionTime.toString()}
+                    selectedValues={filterConfig.time || new Set()}
+                    onFilterChange={(values) => handleFilter('time', values)}
+                    alignRight
+                  />
                 </div>
-                <input
-                  type="text"
-                  placeholder="Filter..."
-                  value={filterConfig.time || ''}
-                  onChange={(e) => handleFilter('time', e.target.value)}
-                  style={{ 
-                    width: '100%',
-                    padding: '6px 8px',
-                    borderRadius: '4px',
-                    border: '1px solid #e5e7eb',
-                    fontSize: '0.875rem',
-                    boxSizing: 'border-box'
-                  }}
-                />
               </th>
-              <th style={{ 
-                width: '15%',
+              <th style={{
+                width: '8%',
                 padding: '12px 16px',
                 borderBottom: '2px solid #e5e7eb',
                 textAlign: 'center'
               }}>
-                Actions
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontWeight: 'normal',
+                  fontSize: '0.875rem',
+                  color: '#374151',
+                  height: '100%'
+                }}>
+                  Action
+                </div>
               </th>
             </tr>
           </thead>
           <tbody>
             {filteredAndSortedResults.map((result, index) => (
-              <tr key={result.id} style={{ 
-                background: index % 2 === 0 ? '#fff' : '#f9fafb',
-                transition: 'background-color 0.2s'
+              <tr key={index} style={{ 
+                borderBottom: index < filteredAndSortedResults.length - 1 ? '1px solid #e5e7eb' : 'none'
               }}>
                 <td style={{ 
                   padding: '12px 16px',
-                  borderBottom: '1px solid #e5e7eb',
-                  borderRight: '1px solid #e5e7eb'
+                  borderRight: '1px solid #e5e7eb',
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis'
                 }}>
                   {result.oldFileName}
                 </td>
                 <td style={{ 
                   padding: '12px 16px',
-                  borderBottom: '1px solid #e5e7eb',
-                  borderRight: '1px solid #e5e7eb'
+                  borderRight: '1px solid #e5e7eb',
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis'
                 }}>
                   {result.newFileName}
                 </td>
                 <td style={{ 
                   padding: '12px 16px',
-                  borderBottom: '1px solid #e5e7eb',
                   borderRight: '1px solid #e5e7eb'
                 }}>
                   <span style={{
-                    padding: '4px 12px',
+                    display: 'inline-block',
+                    padding: '2px 8px',
                     borderRadius: '9999px',
-                    fontSize: '0.875rem',
+                    fontSize: '0.75rem',
                     fontWeight: 500,
-                    background: result.overallResult === 'Pass' ? '#dcfce7' : '#fee2e2',
+                    backgroundColor: result.overallResult === 'Pass' ? '#dcfce7' : '#fee2e2',
                     color: result.overallResult === 'Pass' ? '#166534' : '#991b1b'
                   }}>
                     {result.overallResult}
@@ -368,40 +372,32 @@ const ComparisonTable: React.FC<ComparisonTableProps> = ({ results }) => {
                 </td>
                 <td style={{ 
                   padding: '12px 16px',
-                  borderBottom: '1px solid #e5e7eb',
-                  borderRight: '1px solid #e5e7eb'
+                  borderRight: '1px solid #e5e7eb',
+                  textAlign: 'right',
+                  fontVariantNumeric: 'tabular-nums',
+                  fontFamily: 'monospace'
                 }}>
                   {result.executionTime}
                 </td>
                 <td style={{ 
                   padding: '12px 16px',
-                  borderBottom: '1px solid #e5e7eb',
                   textAlign: 'center'
                 }}>
-                  <button 
+                  <button
                     onClick={() => handleViewClick(result.id)}
-                    disabled={loading}
-                    style={{ 
-                      padding: '6px 12px',
+                    style={{
                       background: '#f3f4f6',
                       border: '1px solid #e5e7eb',
-                      borderRadius: '6px',
-                      cursor: 'pointer',
+                      borderRadius: '4px',
+                      padding: '4px 12px',
                       fontSize: '0.875rem',
-                      color: '#374151',
-                      transition: 'all 0.2s',
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '4px'
+                      cursor: 'pointer',
+                      transition: 'all 0.2s'
                     }}
-                    onMouseEnter={e => {
-                      e.currentTarget.style.background = '#e5e7eb';
-                    }}
-                    onMouseLeave={e => {
-                      e.currentTarget.style.background = '#f3f4f6';
-                    }}
+                    onMouseEnter={e => e.currentTarget.style.background = '#e5e7eb'}
+                    onMouseLeave={e => e.currentTarget.style.background = '#f3f4f6'}
                   >
-                    🔍 View
+                    View
                   </button>
                 </td>
               </tr>
