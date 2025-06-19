@@ -25,10 +25,13 @@ interface FilterConfig {
 const ComparisonModal: React.FC<ComparisonModalProps> = ({ result, onClose }) => {
   const [sortConfig, setSortConfig] = useState<SortConfig>({ key: '', direction: 'asc' });
   const [filterConfig, setFilterConfig] = useState<FilterConfig>({});
-
-  // Separate special fields and line comparisons
-  const specialFields = Object.entries(result.results).filter(([key]) => 
-    key.includes('Totale kosten') || key.includes('Door jou te betalen') || key.includes('Leveringskosten')
+  const specialFieldKeywords = [
+    'Totale kosten',
+    'Door jou te betalen',
+    'Leveringskosten',
+  ];
+  const specialFields = Object.entries(result.results).filter(([key]) =>
+    specialFieldKeywords.some(keyword => key.includes(keyword))
   );
   
   // Get all line comparisons and parse page/line numbers
