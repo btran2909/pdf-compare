@@ -26,7 +26,7 @@ export const ColumnFilterPopover: React.FC<ColumnFilterPopoverProps> = ({
   // Get unique values from data
   const uniqueValues = Array.from(new Set(data.map(valueAccessor)))
     .filter(Boolean)
-    .sort((a, b) => String(a).localeCompare(String(b)));
+    .sort((a, b) => String(a).localeCompare(String(b), undefined, { numeric: true }));
 
   // Filter values based on search term
   const filteredValues = uniqueValues.filter(value =>
