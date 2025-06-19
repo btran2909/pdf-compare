@@ -31,14 +31,14 @@ const downloadPDF = async (url, filename) => {
 
 function findAndSortByX(content, inputStr) {
   // Tìm object có str = inputStr
-  const targetObj = content.find(obj => obj.str === inputStr);
+  const targetObj = content.find(obj => obj.str.includes(inputStr));
   if (!targetObj) return [];
 
   // Lấy tất cả object có cùng y
   let sameYList = content.filter(obj => obj.y === targetObj.y);
 
   // Loại bỏ object có str là '' hoặc ' '
-  sameYList = sameYList.filter(obj => obj.str.trim() !== '' && obj.str);
+  sameYList = sameYList.filter(obj => obj.str.trim() !== '' && obj.str.trim() !== '-' && obj.str);
 
   // Sort theo x tăng dần
   sameYList.sort((a, b) => a.x - b.x);
@@ -67,7 +67,6 @@ const extractPDFContent = async (filePath) => {
         });
       }
     }
-
     dataResult.push(pageData);
   }
   return dataResult;
@@ -118,10 +117,8 @@ const compareFields = (oldContent, newContent) => {
       if (newField) {
         const oldValue = oldField.content[oldField.selectedIndex]?.str;
         const newValue = newField.content[newField.selectedIndex]?.str;
-      
         const cleanOldValue = oldValue?.replace(/[€\s]/g, '') || '';
         const cleanNewValue = newValue?.replace(/[€\s]/g, '') || '';
-
         results[`${oldField.key} (Page ${pageIndex + 1})`] = {
           old: oldValue || 'N/A',
           new: newValue || 'N/A',
@@ -220,7 +217,6 @@ const comparePDFs = async (oldPdfUrl, newPdfUrl) => {
 
     const oldContent = await extractPDFContent(oldPdfPath);
     const newContent = await extractPDFContent(newPdfPath);
-    
     const comparison = compareFields(oldContent, newContent);
     const executionTime = Date.now() - startTime;
 
@@ -247,12 +243,12 @@ const comparePDFs = async (oldPdfUrl, newPdfUrl) => {
     throw new Error(`PDF comparison failed: ${error.message}`);
   } finally {
     // Clean up temp files
-    if (oldPdfPath && fs.existsSync(oldPdfPath)) {
-      await fs.remove(oldPdfPath);
-    }
-    if (newPdfPath && fs.existsSync(newPdfPath)) {
-      await fs.remove(newPdfPath);
-    }
+    // if (oldPdfPath && fs.existsSync(oldPdfPath)) {
+    //   await fs.remove(oldPdfPath);
+    // }
+    // if (newPdfPath && fs.existsSync(newPdfPath)) {
+    //   await fs.remove(newPdfPath);
+    // }
   }
 };
 

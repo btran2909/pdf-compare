@@ -24,6 +24,7 @@ client/.env
 server/node_modules/
 server/dist/
 server/.env
+server/src/temp
 
 # dependencies
 /.pnp
