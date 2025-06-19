@@ -21,12 +21,20 @@ const fieldsThatShouldDiffers = [
 ];
 
 const downloadPDF = async (url, filename) => {
-  const response = await axios.get(url, { responseType: 'arraybuffer' });
-  const tempDir = path.join(__dirname, '../../temp');
-  await fs.ensureDir(tempDir);
-  const filePath = path.join(tempDir, filename);
-  await fs.writeFile(filePath, response.data);
-  return filePath;
+  try {
+    const response = await axios.get(url, { 
+      responseType: 'arraybuffer',
+      timeout: 30000, // 30 second timeout
+      maxContentLength: 50 * 1024 * 1024 // 50MB max file size
+    });
+    const tempDir = path.join(__dirname, '../temp');
+    await fs.ensureDir(tempDir);
+    const filePath = path.join(tempDir, filename);
+    await fs.writeFile(filePath, response.data);
+    return filePath;
+  } catch (error) {
+    throw new Error(`Failed to download PDF from ${url}: ${error.message}`);
+  }
 };
 
 function findAndSortByX(content, inputStr) {
@@ -98,6 +106,11 @@ const groupContentByLines = (content) => {
 };
 
 const compareFields = (oldContent, newContent) => {
+  if (newContent.length > oldContent.length) {
+    // Loại bỏ phần tử index 1 khỏi newContent
+    newContent = newContent.filter((_, idx) => idx !== 1);
+  }
+  
   if (oldContent.length !== newContent.length) {
     throw new Error('Old and new content have different number of pages');
   }
@@ -186,7 +199,7 @@ const compareFields = (oldContent, newContent) => {
 
 const saveComparisonResult = async (result) => {
   const resultId = crypto.randomUUID();
-  const tempDir = path.join(__dirname, '../../temp/results');
+  const tempDir = path.join(__dirname, '../temp/results');
   await fs.ensureDir(tempDir);
   
   const resultPath = path.join(tempDir, `${resultId}.json`);
@@ -199,7 +212,7 @@ const saveComparisonResult = async (result) => {
 };
 
 const getComparisonResult = async (resultId) => {
-  const resultPath = path.join(__dirname, '../../temp/results', `${resultId}.json`);
+  const resultPath = path.join(__dirname, '../temp/results', `${resultId}.json`);
   if (await fs.pathExists(resultPath)) {
     return await fs.readJson(resultPath);
   }
@@ -212,8 +225,8 @@ const comparePDFs = async (oldPdfUrl, newPdfUrl) => {
   let newPdfPath = null;
 
   try {
-    oldPdfPath = await downloadPDF(oldPdfUrl, 'old.pdf');
-    newPdfPath = await downloadPDF(newPdfUrl, 'new.pdf');
+    oldPdfPath = await downloadPDF(oldPdfUrl, `old_${Date.now()}_${Math.random().toString(36).substr(2, 9)}.pdf`);
+    newPdfPath = await downloadPDF(newPdfUrl, `new_${Date.now()}_${Math.random().toString(36).substr(2, 9)}.pdf`);
 
     const oldContent = await extractPDFContent(oldPdfPath);
     const newContent = await extractPDFContent(newPdfPath);
@@ -243,12 +256,16 @@ const comparePDFs = async (oldPdfUrl, newPdfUrl) => {
     throw new Error(`PDF comparison failed: ${error.message}`);
   } finally {
     // Clean up temp files
-    // if (oldPdfPath && fs.existsSync(oldPdfPath)) {
-    //   await fs.remove(oldPdfPath);
-    // }
-    // if (newPdfPath && fs.existsSync(newPdfPath)) {
-    //   await fs.remove(newPdfPath);
-    // }
+    try {
+      if (oldPdfPath && await fs.pathExists(oldPdfPath)) {
+        await fs.remove(oldPdfPath);
+      }
+      if (newPdfPath && await fs.pathExists(newPdfPath)) {
+        await fs.remove(newPdfPath);
+      }
+    } catch (cleanupError) {
+      console.warn('Failed to cleanup temp files:', cleanupError.message);
+    }
   }
 };
 
