@@ -275,6 +275,68 @@ app.get('/api/comparison/:id', async (req, res) => {
   }
 });
 
+// Get PDF comparison data for side-by-side view
+app.get('/api/pdf-comparison/:id', async (req, res) => {
+  try {
+    const result = await getComparisonResult(req.params.id);
+    if (!result) {
+      return res.status(404).json({ error: 'Comparison result not found' });
+    }
+
+    // Correctly construct the path to the temp directory where PDFs are stored.
+    // The temp directory is inside the `server` directory.
+    const tempDir = path.join(__dirname, 'temp');
+    const oldPdfPath = path.join(tempDir, result.oldFileName);
+    const newPdfPath = path.join(tempDir, result.newFileName);
+
+    if (!fs.existsSync(oldPdfPath) || !fs.existsSync(newPdfPath)) {
+      console.error('PDF file not found at path:', oldPdfPath);
+      console.error('PDF file not found at path:', newPdfPath);
+      return res.status(404).json({ 
+        error: 'PDF files not found',
+        details: {
+          searchedOldPath: oldPdfPath,
+          searchedNewPath: newPdfPath
+        }
+      });
+    }
+
+    const { extractPDFContent, findDifferences } = require('./services/pdfService');
+    
+    // Extract content from both PDFs
+    const oldContent = await extractPDFContent(oldPdfPath);
+    const newContent = await extractPDFContent(newPdfPath);
+
+    // Find differences between the PDFs
+    const differences = findDifferences(oldContent, newContent);
+
+    // Format data for frontend
+    const oldPages = oldContent.map((page, index) => ({
+      pageNumber: index + 1,
+      content: page.content,
+      differences: differences.oldPages[index] || []
+    }));
+
+    const newPages = newContent.map((page, index) => ({
+      pageNumber: index + 1,
+      content: page.content,
+      differences: differences.newPages[index] || []
+    }));
+
+    res.json({
+      oldPages,
+      newPages,
+      summary: {
+        totalDifferences: differences.totalDifferences,
+        pagesWithDifferences: differences.pagesWithDifferences
+      }
+    });
+  } catch (error) {
+    console.error('Error getting PDF comparison data:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Serve static files in production
 if (process.env.NODE_ENV === 'production') {
   app.use(express.static(path.join(__dirname, '../../client/build')));

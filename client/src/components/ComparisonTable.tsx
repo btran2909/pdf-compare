@@ -2,6 +2,8 @@ import React, { useState, useMemo } from 'react';
 import axios from 'axios';
 import { ComparisonResult } from '../types';
 import ComparisonModal from './ComparisonModal';
+import PDFComparisonViewer from './PDFComparisonViewer';
+import ErrorModal from './ErrorModal';
 import { ColumnFilterPopover } from './ColumnFilterPopover';
 
 interface ComparisonTableProps {
@@ -19,22 +21,33 @@ interface FilterConfig {
 
 const ComparisonTable: React.FC<ComparisonTableProps> = ({ results }) => {
   const [selectedResult, setSelectedResult] = useState<ComparisonResult | null>(null);
+  const [selectedPDFComparison, setSelectedPDFComparison] = useState<ComparisonResult | null>(null);
+  const [selectedError, setSelectedError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sortConfig, setSortConfig] = useState<SortConfig>({ key: '', direction: 'asc' });
   const [filterConfig, setFilterConfig] = useState<FilterConfig>({});
 
-  const handleViewClick = async (resultId: string) => {
+  const handleViewClick = async (result: ComparisonResult) => {
+    if (result.overallResult === 'Error' && result.error) {
+      setSelectedError(result.error);
+      return;
+    }
+    
     setLoading(true);
     setError(null);
     try {
-      const response = await axios.get(`http://localhost:5050/api/comparison/${resultId}`);
+      const response = await axios.get(`http://localhost:5050/api/comparison/${result.id}`);
       setSelectedResult(response.data as ComparisonResult);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load comparison details');
     } finally {
       setLoading(false);
     }
+  };
+
+  const handlePDFComparisonClick = (result: ComparisonResult) => {
+    setSelectedPDFComparison(result);
   };
 
   const handleSort = (key: string) => {
@@ -74,16 +87,16 @@ const ComparisonTable: React.FC<ComparisonTableProps> = ({ results }) => {
           let itemValue = '';
           switch (key) {
             case 'oldFile':
-              itemValue = item.oldFileName;
+              itemValue = item?.oldFileName || '';
               break;
             case 'newFile':
-              itemValue = item.newFileName;
+              itemValue = item?.newFileName || '';
               break;
             case 'status':
-              itemValue = item.overallResult;
+              itemValue = item?.overallResult || '';
               break;
             case 'time':
-              itemValue = item.executionTime.toString();
+              itemValue = item?.executionTime?.toString() || '0';
               break;
             default:
               return true;
@@ -99,20 +112,20 @@ const ComparisonTable: React.FC<ComparisonTableProps> = ({ results }) => {
         let aValue, bValue;
         switch (sortConfig.key) {
           case 'oldFile':
-            aValue = a.oldFileName;
-            bValue = b.oldFileName;
+            aValue = a?.oldFileName || '';
+            bValue = b?.oldFileName || '';
             break;
           case 'newFile':
-            aValue = a.newFileName;
-            bValue = b.newFileName;
+            aValue = a?.newFileName || '';
+            bValue = b?.newFileName || '';
             break;
           case 'status':
-            aValue = a.overallResult;
-            bValue = b.overallResult;
+            aValue = a?.overallResult || '';
+            bValue = b?.overallResult || '';
             break;
           case 'time':
-            aValue = a.executionTime;
-            bValue = b.executionTime;
+            aValue = a?.executionTime || 0;
+            bValue = b?.executionTime || 0;
             break;
           default:
             return 0;
@@ -178,7 +191,7 @@ const ComparisonTable: React.FC<ComparisonTableProps> = ({ results }) => {
                   <ColumnFilterPopover
                     columnKey="oldFile"
                     data={results}
-                    valueAccessor={(item) => item.oldFileName}
+                    valueAccessor={(item) => item?.oldFileName || ''}
                     selectedValues={filterConfig.oldFile || new Set()}
                     onFilterChange={(values) => handleFilter('oldFile', values)}
                   />
@@ -220,7 +233,7 @@ const ComparisonTable: React.FC<ComparisonTableProps> = ({ results }) => {
                   <ColumnFilterPopover
                     columnKey="newFile"
                     data={results}
-                    valueAccessor={(item) => item.newFileName}
+                    valueAccessor={(item) => item?.newFileName || ''}
                     selectedValues={filterConfig.newFile || new Set()}
                     onFilterChange={(values) => handleFilter('newFile', values)}
                   />
@@ -262,7 +275,7 @@ const ComparisonTable: React.FC<ComparisonTableProps> = ({ results }) => {
                   <ColumnFilterPopover
                     columnKey="status"
                     data={results}
-                    valueAccessor={(item) => item.overallResult}
+                    valueAccessor={(item) => item?.overallResult || ''}
                     selectedValues={filterConfig.status || new Set()}
                     onFilterChange={(values) => handleFilter('status', values)}
                   />
@@ -304,7 +317,7 @@ const ComparisonTable: React.FC<ComparisonTableProps> = ({ results }) => {
                   <ColumnFilterPopover
                     columnKey="time"
                     data={results}
-                    valueAccessor={(item) => item.executionTime.toString()}
+                    valueAccessor={(item) => item?.executionTime?.toString() || '0'}
                     selectedValues={filterConfig.time || new Set()}
                     onFilterChange={(values) => handleFilter('time', values)}
                     alignRight
@@ -312,7 +325,7 @@ const ComparisonTable: React.FC<ComparisonTableProps> = ({ results }) => {
                 </div>
               </th>
               <th style={{
-                width: '8%',
+                width: '12%',
                 padding: '12px 16px',
                 borderBottom: '2px solid #e5e7eb',
                 textAlign: 'center'
@@ -326,33 +339,31 @@ const ComparisonTable: React.FC<ComparisonTableProps> = ({ results }) => {
                   color: '#374151',
                   height: '100%'
                 }}>
-                  Action
+                  Actions
                 </div>
               </th>
             </tr>
           </thead>
           <tbody>
             {filteredAndSortedResults.map((result, index) => (
-              <tr key={index} style={{ 
-                borderBottom: index < filteredAndSortedResults.length - 1 ? '1px solid #e5e7eb' : 'none'
+              <tr key={result.id || index} style={{
+                background: index % 2 === 0 ? '#fff' : '#f9fafb',
+                transition: 'background 0.2s',
+                borderBottom: '1px solid #e5e7eb'
               }}>
                 <td style={{ 
                   padding: '12px 16px',
                   borderRight: '1px solid #e5e7eb',
-                  whiteSpace: 'nowrap',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis'
+                  wordBreak: 'break-word',
                 }}>
-                  {result.oldFileName}
+                  {result?.oldFileName || 'N/A'}
                 </td>
                 <td style={{ 
                   padding: '12px 16px',
                   borderRight: '1px solid #e5e7eb',
-                  whiteSpace: 'nowrap',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis'
+                  wordBreak: 'break-word',
                 }}>
-                  {result.newFileName}
+                  {result?.newFileName || 'N/A'}
                 </td>
                 <td style={{ 
                   padding: '12px 16px',
@@ -361,50 +372,85 @@ const ComparisonTable: React.FC<ComparisonTableProps> = ({ results }) => {
                   <span style={{
                     display: 'inline-block',
                     padding: '2px 8px',
-                    borderRadius: '9999px',
+                    borderRadius: '12px',
                     fontSize: '0.75rem',
                     fontWeight: 500,
-                    backgroundColor: result.overallResult === 'Pass' ? '#dcfce7' : '#fee2e2',
-                    color: result.overallResult === 'Pass' ? '#166534' : '#991b1b'
-                  }}>
-                    {result.overallResult}
+                    background: result.overallResult === 'Pass' ? '#dcfce7' : '#fee2e2',
+                    color: result.overallResult === 'Pass' ? '#166534' : '#991b1b',
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    maxWidth: '150px',
+                    cursor: result.error ? 'help' : 'default'
+                  }}
+                    title={result.error}
+                  >
+                    {result.overallResult === 'Error'
+                      ? result.error?.split(':')[0]
+                      : result.overallResult || 'Unknown'}
                   </span>
                 </td>
                 <td style={{ 
                   padding: '12px 16px',
-                  borderRight: '1px solid #e5e7eb',
-                  textAlign: 'right',
-                  fontVariantNumeric: 'tabular-nums',
-                  fontFamily: 'monospace'
+                  borderRight: '1px solid #e5e7eb'
                 }}>
-                  {result.executionTime}
+                  {`${result?.executionTime || 0} ms`}
                 </td>
-                <td style={{ 
-                  padding: '12px 16px',
-                  textAlign: 'center'
-                }}>
-                  <button
-                    onClick={() => handleViewClick(result.id)}
-                    style={{
-                      background: '#f3f4f6',
-                      border: '1px solid #e5e7eb',
-                      borderRadius: '4px',
-                      padding: '4px 12px',
-                      fontSize: '0.875rem',
-                      cursor: 'pointer',
-                      transition: 'all 0.2s'
-                    }}
-                    onMouseEnter={e => e.currentTarget.style.background = '#e5e7eb'}
-                    onMouseLeave={e => e.currentTarget.style.background = '#f3f4f6'}
-                  >
-                    View
-                  </button>
+                <td style={{ padding: '12px 16px' }}>
+                  <div style={{
+                    display: 'flex',
+                    gap: '8px',
+                    justifyContent: 'center'
+                  }}>
+                    <button 
+                      onClick={() => handleViewClick(result)}
+                      disabled={!result.id && !result.error}
+                      style={{
+                        background: '#f3f4f6',
+                        border: '1px solid #e5e7eb',
+                        borderRadius: '4px',
+                        padding: '4px 8px',
+                        fontSize: '0.75rem',
+                        cursor: 'pointer',
+                        transition: 'all 0.2s'
+                      }}
+                      onMouseEnter={e => e.currentTarget.style.background = '#e5e7eb'}
+                      onMouseLeave={e => e.currentTarget.style.background = '#f3f4f6'}
+                    >
+                      Details
+                    </button>
+                    <button 
+                      onClick={() => handlePDFComparisonClick(result)}
+                      disabled={result.overallResult === 'Error'}
+                      style={{
+                        background: '#3b82f6',
+                        border: '1px solid #2563eb',
+                        borderRadius: '4px',
+                        padding: '4px 8px',
+                        fontSize: '0.75rem',
+                        color: 'white',
+                        transition: 'all 0.2s',
+                        cursor: result.overallResult === 'Error' ? 'not-allowed' : 'pointer',
+                        opacity: result.overallResult === 'Error' ? 0.5 : 1
+                      }}
+                      onMouseEnter={e => e.currentTarget.style.background = '#2563eb'}
+                      onMouseLeave={e => e.currentTarget.style.background = '#3b82f6'}
+                    >
+                      Compare PDFs
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
+
+      <style>{`
+        .status-pill:hover .tooltip {
+          display: block;
+        }
+      `}</style>
 
       {error && (
         <div style={{ 
@@ -423,6 +469,20 @@ const ComparisonTable: React.FC<ComparisonTableProps> = ({ results }) => {
         <ComparisonModal
           result={selectedResult}
           onClose={() => setSelectedResult(null)}
+        />
+      )}
+
+      {selectedPDFComparison && (
+        <PDFComparisonViewer
+          comparisonResult={selectedPDFComparison}
+          onClose={() => setSelectedPDFComparison(null)}
+        />
+      )}
+
+      {selectedError && (
+        <ErrorModal
+          error={selectedError}
+          onClose={() => setSelectedError(null)}
         />
       )}
     </div>

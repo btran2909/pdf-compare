@@ -3,6 +3,21 @@ const fs = require('fs-extra');
 const ExcelJS = require('exceljs');
 const { comparePDFs } = require('./pdfService');
 
+const getCellValueAsString = (cell) => {
+  if (!cell || !cell.value) {
+    return null;
+  }
+  if (typeof cell.value === 'object' && cell.value.hyperlink) {
+    // Handle hyperlink objects by taking the text
+    return cell.value.text;
+  }
+  if (typeof cell.value === 'object' && cell.value.richText) {
+    // Handle rich text objects by concatenating text parts
+    return cell.value.richText.map(rt => rt.text).join('');
+  }
+  return cell.value.toString().trim();
+};
+
 // Configuration for concurrency control
 const CONCURRENT_LIMIT = 5; // Process 5 PDFs simultaneously
 const BATCH_SIZE = 10; // Process in batches of 10
@@ -37,8 +52,8 @@ const processExcelFile = async (filePath, onProgress) => {
     // First, collect all valid records
     while (worksheet.getRow(rowNumber).getCell(1).value || worksheet.getRow(rowNumber).getCell(2).value) {
       const row = worksheet.getRow(rowNumber);
-      const oldPdfUrlExcel = row.getCell(1).value;
-      const newPdfUrlExcel = row.getCell(2).value;
+      const oldPdfUrlExcel = getCellValueAsString(row.getCell(1));
+      const newPdfUrlExcel = getCellValueAsString(row.getCell(2));
       
       if (oldPdfUrlExcel && newPdfUrlExcel) {
         records.push({
@@ -125,11 +140,14 @@ const processBatch = async (batch, onProgress, batchIndex, totalRecords) => {
       console.error(`Record ${batch[index].rowNumber} failed:`, result.reason);
       const record = batch[index];
       results.push({
+        id: `error-${record.rowNumber}-${Date.now()}`, // Generate a unique ID for error rows
         rowNumber: record.rowNumber,
-        oldPdfUrl: record.oldPdfUrl,
-        newPdfUrl: record.newPdfUrl,
+        oldFileName: record.oldPdfUrlExcel, // Use the name from Excel
+        newFileName: record.newPdfUrlExcel, // Use the name from Excel
         error: result.reason.message,
-        overallResult: 'Error'
+        overallResult: 'Error',
+        executionTime: 0,
+        results: [] // Ensure results array exists
       });
     }
   });
@@ -163,7 +181,8 @@ const processRecordWithSemaphore = async (record, semaphore) => {
       };
     } catch (error) {
       console.error(`Record ${record.rowNumber} failed:`, error.message);
-      throw new Error(`Row ${record.rowNumber}: ${error.message}`);
+      // Re-throw the error with additional context
+      throw new Error(`Row ${record.rowNumber} (${record.oldPdfUrlExcel} vs ${record.newPdfUrlExcel}): ${error.message}`);
     } finally {
       console.log(`Releasing semaphore for record ${record.rowNumber}`);
       release();

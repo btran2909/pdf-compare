@@ -4,13 +4,16 @@ export interface ComparisonResult {
   newFileName: string;
   overallResult: 'Pass' | 'Fail' | 'Error';
   executionTime: number;
-  results: {
-    [key: string]: {
-      old: string | null;
-      new: string | null;
-      result: 'Pass' | 'Fail';
-      y?: number;  // Optional Y coordinate for line positioning
-    };
-  };
+  results: ResultDetail[];
   error?: string;
+}
+
+export interface ResultDetail {
+  key: string;
+  old: string;
+  new: string;
+  result: 'Pass' | 'Fail';
+  group: string;
+  y?: number;
+  type?: 'different' | 'same' | 'custom';
 } 

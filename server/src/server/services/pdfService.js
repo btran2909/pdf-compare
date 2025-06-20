@@ -5,19 +5,51 @@ const path = require('path');
 const crypto = require('crypto');
 
 const pdfExtract = new PDFExtract();
-const fieldsThatShouldDiffers = [
-  {
-    key: 'Totale kosten in de verbruiksperiode',
-    selectedIndex: 2
-  },
-  {
-    key: 'Door jou te betalen',
-    selectedIndex: 2
-  },
-  {
-    key: 'Leveringskosten van stroom en gas',
-    selectedIndex: 2
+
+// Custom check for Vaste leveringskosten: "X dagen" part must be the same, but the final cost must be different.
+const checkVasteLeveringskosten = (oldContent, newContent) => {
+  if (!oldContent || !newContent || oldContent.length < 2 || newContent.length < 2) return false;
+
+  const oldText = oldContent.map(o => o.str).join(' ');
+  const newText = newContent.map(o => o.str).join(' ');
+
+  // Extract number of days from "X dagen"
+  const oldDaysMatch = oldText.match(/(\d+)\s+dagen/);
+  const newDaysMatch = newText.match(/(\d+)\s+dagen/);
+
+  // If "dagen" is present, the number of days must match.
+  if (oldDaysMatch && newDaysMatch) {
+    if (oldDaysMatch[1] !== newDaysMatch[1]) {
+      return false; // Days are present but different, fail.
+    }
+  } else if (oldDaysMatch || newDaysMatch) {
+    return false; // "dagen" present in one but not the other, fail.
   }
+
+  // The final cost value (last element on the line) must be different
+  const oldCost = oldContent[oldContent.length - 1].str.replace(/[€\s,.]/g, '');
+  const newCost = newContent[newContent.length - 1].str.replace(/[€\s,.]/g, '');
+  
+  return oldCost !== newCost;
+};
+
+const specialFieldDefinitions = [
+  // Group 1: Must be DIFFERENT
+  { key: 'Totale kosten in de verbruiksperiode', selectedIndex: 2, type: 'different', group: 'Phải khác nhau' },
+  { key: 'Door jou te betalen', selectedIndex: 2, type: 'different', group: 'Phải khác nhau' },
+  { key: 'Leveringskosten van stroom en gas', selectedIndex: 2, type: 'different', group: 'Phải khác nhau' },
+  
+  // Group 2: Must be the SAME (whole line)
+  { key: 'Overheidsheffingen op stroom en gas, dit dragen we af aan de overheid', type: 'same-line', group: 'Phải giống nhau' },
+  { key: 'Netbeheerkosten op stroom en gas, dit dragen we af aan je netbeheerder', type: 'same-line', group: 'Phải giống nhau' },
+  { key: 'In rekening gebrachte termijnbedragen', type: 'same-line', group: 'Phải giống nhau' },
+
+  // Group 3: BFDC - Must be DIFFERENT
+  { key: 'Totale netto verbruik', selectedIndex: 1, type: 'different', group: 'BFDC buộc phải khác nhau' },
+  { key: 'Vaste leveringskosten voor stroom', type: 'custom', customCheck: checkVasteLeveringskosten, group: 'BFDC buộc phải khác nhau' },
+  { key: 'Vaste leveringskosten voor gas', type: 'custom', customCheck: checkVasteLeveringskosten, group: 'BFDC buộc phải khác nhau' },
+  { key: 'TERZAKE ENERGIE GROENE STROOM TERZAKE ENERGIE DYNAMISCH', selectedIndex: 0, type: 'different', group: 'BFDC buộc phải khác nhau' },
+  { key: '(01-09-2024 / 01-10-2024) | 21% BTW', selectedIndex: 0, type: 'different', group: 'BFDC buộc phải khác nhau' },
 ];
 
 const downloadPDF = async (url, filename) => {
@@ -65,14 +97,10 @@ const extractPDFContent = async (filePath) => {
     };
 
     // Extract special fields
-    for (const item of fieldsThatShouldDiffers) {
+    for (const item of specialFieldDefinitions) {
       const sortedList = findAndSortByX(page.content, item.key);
       if (sortedList.length) {
-        pageData.specialFields.push({
-          key: item.key,
-          selectedIndex: item.selectedIndex,
-          content: sortedList
-        });
+        pageData.specialFields.push({ ...item, content: sortedList });
       }
     }
     dataResult.push(pageData);
@@ -106,47 +134,117 @@ const groupContentByLines = (content) => {
 };
 
 const compareFields = (oldContent, newContent) => {
-  if (newContent.length > oldContent.length) {
-    // Loại bỏ phần tử index 1 khỏi newContent
-    newContent = newContent.filter((_, idx) => idx !== 1);
-  }
-  
-  if (oldContent.length !== newContent.length) {
-    throw new Error('Old and new content have different number of pages');
-  }
+  // This filter seems suspicious and might be the source of the page count mismatch.
+  // I will comment it out to handle page differences gracefully below.
+  // if (newContent.length > oldContent.length) {
+  //   newContent = newContent.filter((_, idx) => idx !== 1);
+  // }
 
   const results = {};
   let overallResult = 'Pass';
+  const maxPages = Math.max(oldContent.length, newContent.length);
 
-  // Loop through each page
-  for (let pageIndex = 0; pageIndex < oldContent.length; pageIndex++) {
+  // If page counts are different, we mark the overall result as 'Fail'
+  // but continue processing to find other differences.
+  if (oldContent.length !== newContent.length) {
+    overallResult = 'Fail';
+    results['PageCountMismatch'] = {
+      key: 'Page Count',
+      old: `${oldContent.length} pages`,
+      new: `${newContent.length} pages`,
+      result: 'Fail',
+      group: 'Page Structure',
+    };
+  }
+
+  // Loop through each page up to the maximum number of pages
+  for (let pageIndex = 0; pageIndex < maxPages; pageIndex++) {
     const oldPage = oldContent[pageIndex];
     const newPage = newContent[pageIndex];
 
+    // Case 1: Page exists in old but not in new (page removed)
+    if (oldPage && !newPage) {
+      results[`Page ${pageIndex + 1} Content`] = {
+        key: `Page ${pageIndex + 1}`,
+        old: 'Page exists',
+        new: 'Page does not exist (Removed)',
+        result: 'Fail',
+        group: 'Page Structure',
+      };
+      continue; // Skip to the next page
+    }
+
+    // Case 2: Page exists in new but not in old (page added)
+    if (!oldPage && newPage) {
+      results[`Page ${pageIndex + 1} Content`] = {
+        key: `Page ${pageIndex + 1}`,
+        old: 'Page does not exist (Added)',
+        new: 'Page exists',
+        result: 'Fail',
+        group: 'Page Structure',
+      };
+      continue; // Skip to the next page
+    }
+
+    // This should not happen with the current loop structure, but as a safeguard:
+    if (!oldPage || !newPage) {
+      continue;
+    }
+    
     // Compare specific fields first
+    const processedYCoords = new Set();
     for (const oldField of oldPage.specialFields) {
       const newField = newPage.specialFields.find(f => f.key === oldField.key);
       
       if (newField) {
-        const oldValue = oldField.content[oldField.selectedIndex]?.str;
-        const newValue = newField.content[newField.selectedIndex]?.str;
-        const cleanOldValue = oldValue?.replace(/[€\s]/g, '') || '';
-        const cleanNewValue = newValue?.replace(/[€\s]/g, '') || '';
-        results[`${oldField.key} (Page ${pageIndex + 1})`] = {
+        // Mark these lines as processed so they don't get compared again
+        oldField.content.forEach(item => processedYCoords.add(item.y));
+        newField.content.forEach(item => processedYCoords.add(item.y));
+        
+        let result = 'Fail';
+        let oldValue, newValue;
+        
+        if (oldField.type === 'custom' && oldField.customCheck) {
+          result = oldField.customCheck(oldField.content, newField.content) ? 'Pass' : 'Fail';
+          oldValue = oldField.content.map(c => c.str).join(' ');
+          newValue = newField.content.map(c => c.str).join(' ');
+        } else if (oldField.type === 'same-line') {
+          oldValue = oldField.content.map(c => c.str).join(' ');
+          newValue = newField.content.map(c => c.str).join(' ');
+          // Compare entire line, ignoring only slight whitespace differences
+          const cleanOldValue = oldValue.replace(/\s+/g, ' ').trim();
+          const cleanNewValue = newValue.replace(/\s+/g, ' ').trim();
+          if (cleanOldValue === cleanNewValue) result = 'Pass';
+        } else {
+          oldValue = oldField.content[oldField.selectedIndex]?.str;
+          newValue = newField.content[newField.selectedIndex]?.str;
+          const cleanOldValue = oldValue?.replace(/[€\s,.]/g, '') || '';
+          const cleanNewValue = newValue?.replace(/[€\s,.]/g, '') || '';
+
+          if (oldField.type === 'different') {
+            if (cleanOldValue !== cleanNewValue) result = 'Pass';
+          } else if (oldField.type === 'same') {
+            if (cleanOldValue === cleanNewValue) result = 'Pass';
+          }
+        }
+
+        results[oldField.key] = {
+          key: `${oldField.key} (Page ${pageIndex + 1})`,
           old: oldValue || 'N/A',
           new: newValue || 'N/A',
-          result: cleanOldValue !== cleanNewValue ? 'Pass' : 'Fail'
+          result: result,
+          group: oldField.group,
         };
 
-        if (results[`${oldField.key} (Page ${pageIndex + 1})`].result === 'Fail') {
+        if (result === 'Fail') {
           overallResult = 'Fail';
         }
       }
     }
 
-    // Compare all lines
-    const oldLines = groupContentByLines(oldPage.content);
-    const newLines = groupContentByLines(newPage.content);
+    // Compare all other lines (default rule: must be the same)
+    const oldLines = groupContentByLines(oldPage.content.filter(c => !processedYCoords.has(c.y)));
+    const newLines = groupContentByLines(newPage.content.filter(c => !processedYCoords.has(c.y)));
 
     // Sort lines by Y coordinate for natural reading order
     oldLines.sort((a, b) => a.y - b.y);
@@ -165,18 +263,22 @@ const compareFields = (oldContent, newContent) => {
       const cleanOldText = oldLine.text.replace(/[€\s]+/g, ' ').trim();
       const cleanNewText = newLine ? newLine.text.replace(/[€\s]+/g, ' ').trim() : '';
 
-      results[`Line ${lineIndex + 1} (Page ${pageIndex + 1})`] = {
-        old: oldLine.text,
-        new: newLine ? newLine.text : 'N/A',
-        result: cleanOldText === cleanNewText ? 'Pass' : 'Fail',
-        y: oldLine.y
-      };
-
+      // Only add if it's a fail, as "Pass" is the default for all other lines
       if (cleanOldText !== cleanNewText) {
+        results[`Line ${lineIndex + 1} (Page ${pageIndex + 1})`] = {
+          key: `Line ${lineIndex + 1} (Page ${pageIndex + 1})`,
+          old: oldLine.text,
+          new: newLine ? newLine.text : 'N/A',
+          result: 'Fail',
+          group: 'Các dòng còn lại (phải giống nhau)',
+          y: oldLine.y
+        };
         overallResult = 'Fail';
       }
 
-      processedLines.add(newLine ? newLine.y : null);
+      if (newLine) {
+        processedLines.add(newLine.y);
+      }
     });
 
     // Process remaining new lines that weren't matched
@@ -184,17 +286,20 @@ const compareFields = (oldContent, newContent) => {
     remainingNewLines.sort((a, b) => a.y - b.y);
 
     remainingNewLines.forEach((newLine, idx) => {
-      results[`Line ${oldLines.length + idx + 1} (Page ${pageIndex + 1})`] = {
+      const lineKey = `New Line ${idx + 1} (Page ${pageIndex + 1}) on Y:${newLine.y.toFixed(2)}`;
+      results[lineKey] = {
+        key: lineKey,
         old: 'N/A',
         new: newLine.text,
         result: 'Fail',
+        group: 'Các dòng còn lại (phải giống nhau)',
         y: newLine.y
       };
       overallResult = 'Fail';
     });
   }
 
-  return { results, overallResult };
+  return { results: Object.values(results), overallResult };
 };
 
 const saveComparisonResult = async (result) => {
@@ -224,30 +329,40 @@ const comparePDFs = async (oldPdfUrl, newPdfUrl) => {
   let oldPdfPath = null;
   let newPdfPath = null;
 
+  // Generate unique filenames for storing PDFs temporarily
+  const oldFileName = `old_${Date.now()}_${Math.random().toString(36).substr(2, 9)}.pdf`;
+  const newFileName = `new_${Date.now()}_${Math.random().toString(36).substr(2, 9)}.pdf`;
+
   try {
-    oldPdfPath = await downloadPDF(oldPdfUrl, `old_${Date.now()}_${Math.random().toString(36).substr(2, 9)}.pdf`);
-    newPdfPath = await downloadPDF(newPdfUrl, `new_${Date.now()}_${Math.random().toString(36).substr(2, 9)}.pdf`);
+    oldPdfPath = await downloadPDF(oldPdfUrl, oldFileName);
+    newPdfPath = await downloadPDF(newPdfUrl, newFileName);
 
     const oldContent = await extractPDFContent(oldPdfPath);
     const newContent = await extractPDFContent(newPdfPath);
     const comparison = compareFields(oldContent, newContent);
     const executionTime = Date.now() - startTime;
 
+    // This is the full result object that will be saved to a JSON file
     const result = {
       ...comparison,
       executionTime,
-      oldFileName: path.basename(oldPdfUrl),
-      newFileName: path.basename(newPdfUrl)
+      // Store the generated filenames, not the original ones from the URL
+      oldFileName: oldFileName, 
+      newFileName: newFileName,
+      // Also store original URLs for reference
+      oldFileUrl: oldPdfUrl,
+      newFileUrl: newPdfUrl
     };
 
     // Save full result and get ID
     const resultId = await saveComparisonResult(result);
 
-    // Return minimal info for table
+    // Return a smaller object for immediate display in the UI table.
+    // Here, we use the original filenames from the URL for better readability.
     return {
       id: resultId,
-      oldFileName: result.oldFileName,
-      newFileName: result.newFileName,
+      oldFileName: path.basename(oldPdfUrl),
+      newFileName: path.basename(newPdfUrl),
       overallResult: result.overallResult,
       executionTime: result.executionTime
     };
@@ -256,17 +371,199 @@ const comparePDFs = async (oldPdfUrl, newPdfUrl) => {
     throw new Error(`PDF comparison failed: ${error.message}`);
   } finally {
     // Clean up temp files
-    try {
-      if (oldPdfPath && await fs.pathExists(oldPdfPath)) {
-        await fs.remove(oldPdfPath);
-      }
-      if (newPdfPath && await fs.pathExists(newPdfPath)) {
-        await fs.remove(newPdfPath);
-      }
-    } catch (cleanupError) {
-      console.warn('Failed to cleanup temp files:', cleanupError.message);
-    }
+    // try {
+    //   if (oldPdfPath && await fs.pathExists(oldPdfPath)) {
+    //     await fs.remove(oldPdfPath);
+    //   }
+    //   if (newPdfPath && await fs.pathExists(newPdfPath)) {
+    //     await fs.remove(newPdfPath);
+    //   }
+    // } catch (cleanupError) {
+    //   console.warn('Failed to cleanup temp files:', cleanupError.message);
+    // }
   }
 };
 
-module.exports = { comparePDFs, getComparisonResult }; 
+const findDifferences = (oldContent, newContent) => {
+  const oldPages = [];
+  const newPages = [];
+  let totalDifferences = 0;
+  const pagesWithDifferences = [];
+
+  // Ensure both PDFs have the same number of pages
+  const maxPages = Math.max(oldContent.length, newContent.length);
+  
+  for (let pageIndex = 0; pageIndex < maxPages; pageIndex++) {
+    const oldPage = oldContent[pageIndex] || { content: [], specialFields: [] };
+    const newPage = newContent[pageIndex] || { content: [], specialFields: [] };
+    
+    const oldPageDifferences = [];
+    const newPageDifferences = [];
+    let pageHasDifferences = false;
+
+    // Compare content items
+    const oldItems = oldPage.content || [];
+    const newItems = newPage.content || [];
+    
+    // Create maps for quick lookup
+    const oldItemMap = new Map();
+    const newItemMap = new Map();
+    
+    oldItems.forEach(item => {
+      const key = `${item.x.toFixed(2)}_${item.y.toFixed(2)}_${item.str}`;
+      oldItemMap.set(key, item);
+    });
+    
+    newItems.forEach(item => {
+      const key = `${item.x.toFixed(2)}_${item.y.toFixed(2)}_${item.str}`;
+      newItemMap.set(key, item);
+    });
+
+    // Find items that exist in old but not in new (removed)
+    oldItems.forEach(oldItem => {
+      const key = `${oldItem.x.toFixed(2)}_${oldItem.y.toFixed(2)}_${oldItem.str}`;
+      if (!newItemMap.has(key)) {
+        oldPageDifferences.push({
+          x: oldItem.x,
+          y: oldItem.y,
+          width: oldItem.width || 50,
+          height: oldItem.height || 12,
+          type: 'removed'
+        });
+        pageHasDifferences = true;
+        totalDifferences++;
+      }
+    });
+
+    // Find items that exist in new but not in old (added)
+    newItems.forEach(newItem => {
+      const key = `${newItem.x.toFixed(2)}_${newItem.y.toFixed(2)}_${newItem.str}`;
+      if (!oldItemMap.has(key)) {
+        newPageDifferences.push({
+          x: newItem.x,
+          y: newItem.y,
+          width: newItem.width || 50,
+          height: newItem.height || 12,
+          type: 'added'
+        });
+        pageHasDifferences = true;
+        totalDifferences++;
+      }
+    });
+
+    // Find modified items (same position but different content)
+    oldItems.forEach(oldItem => {
+      const newItem = newItems.find(ni => 
+        Math.abs(ni.x - oldItem.x) < 5 && Math.abs(ni.y - oldItem.y) < 5
+      );
+      
+      if (newItem && newItem.str !== oldItem.str) {
+        oldPageDifferences.push({
+          x: oldItem.x,
+          y: oldItem.y,
+          width: oldItem.width || 50,
+          height: oldItem.height || 12,
+          type: 'modified'
+        });
+        
+        newPageDifferences.push({
+          x: newItem.x,
+          y: newItem.y,
+          width: newItem.width || 50,
+          height: newItem.height || 12,
+          type: 'modified'
+        });
+        
+        pageHasDifferences = true;
+        totalDifferences++;
+      }
+    });
+
+    // Compare special fields
+    const oldSpecialFields = oldPage.specialFields || [];
+    const newSpecialFields = newPage.specialFields || [];
+    
+    oldSpecialFields.forEach(oldField => {
+      const newField = newSpecialFields.find(nf => nf.key === oldField.key);
+      
+      if (newField) {
+        // Compare field content
+        const oldFieldStr = oldField.content.map(c => c.str).join(' ');
+        const newFieldStr = newField.content.map(c => c.str).join(' ');
+        
+        if (oldFieldStr !== newFieldStr) {
+          // Mark all items in this field as modified
+          oldField.content.forEach(item => {
+            oldPageDifferences.push({
+              x: item.x,
+              y: item.y,
+              width: item.width || 50,
+              height: item.height || 12,
+              type: 'modified'
+            });
+          });
+          
+          newField.content.forEach(item => {
+            newPageDifferences.push({
+              x: item.x,
+              y: item.y,
+              width: item.width || 50,
+              height: item.height || 12,
+              type: 'modified'
+            });
+          });
+          
+          pageHasDifferences = true;
+          totalDifferences++;
+        }
+      } else {
+        // Field exists in old but not in new
+        oldField.content.forEach(item => {
+          oldPageDifferences.push({
+            x: item.x,
+            y: item.y,
+            width: item.width || 50,
+            height: item.height || 12,
+            type: 'removed'
+          });
+        });
+        pageHasDifferences = true;
+        totalDifferences++;
+      }
+    });
+
+    // Fields that exist in new but not in old
+    newSpecialFields.forEach(newField => {
+      const oldField = oldSpecialFields.find(of => of.key === newField.key);
+      if (!oldField) {
+        newField.content.forEach(item => {
+          newPageDifferences.push({
+            x: item.x,
+            y: item.y,
+            width: item.width || 50,
+            height: item.height || 12,
+            type: 'added'
+          });
+        });
+        pageHasDifferences = true;
+        totalDifferences++;
+      }
+    });
+
+    if (pageHasDifferences) {
+      pagesWithDifferences.push(pageIndex + 1);
+    }
+
+    oldPages.push(oldPageDifferences);
+    newPages.push(newPageDifferences);
+  }
+
+  return {
+    oldPages,
+    newPages,
+    totalDifferences,
+    pagesWithDifferences
+  };
+};
+
+module.exports = { comparePDFs, getComparisonResult, extractPDFContent, findDifferences }; 
